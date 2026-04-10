@@ -1,132 +1,72 @@
 import streamlit as st
 import google.generativeai as genai
-import tempfile
-import os
 import time
 
-# --- 1. Page & UI Configuration ---
-st.set_page_config(page_title="မြန်မာ SRT ဖန်တီးမှုစနစ်", page_icon="🎬", layout="centered")
-
-# Custom CSS for Deep Blue & Gold Theme, 20px Rounded Corners
+# UI Header & Custom CSS (Deep Blue & Gold Theme)
+st.set_page_config(page_title="Burmese SRT Gen", layout="centered")
 st.markdown("""
     <style>
-    /* Dark Mode Deep Blue Background */
-    .stApp {
-        background-color: #0A1128; 
-        color: #FFFFFF;
-    }
-    
-    /* Header Style */
-    h1 {
-        text-align: center;
-        color: #FFD700; /* Gold */
-        font-weight: bold;
-        text-shadow: 0px 4px 10px rgba(255, 215, 0, 0.3);
-    }
-
-    /* File Uploader Style */
-    section[data-testid="stFileUploadDropzone"] {
-        background-color: #162447;
-        border: 2px dashed #FFD700;
-        border-radius: 20px;
-        padding: 20px;
-        box-shadow: 0px 8px 16px rgba(0, 0, 0, 0.4);
-    }
-
-    /* Preview Box (Code Editor Style) */
-    .stTextArea textarea {
-        background-color: #1E1E2E !important; 
-        color: #A6E22E !important; 
-        font-family: 'Courier New', Courier, monospace !important;
-        border-radius: 20px !important;
-        border: 1px solid #414868 !important;
-        box-shadow: inset 0px 4px 8px rgba(0, 0, 0, 0.5) !important;
-        padding: 15px !important;
-    }
-
-    /* Large Vibrant Download Button */
-    .stDownloadButton button {
-        background-color: #FFD700 !important;
-        color: #0A1128 !important;
-        border-radius: 20px !important;
-        font-size: 18px !important;
-        font-weight: bold !important;
-        width: 100% !important;
-        padding: 15px 0px !important;
-        border: none !important;
-        box-shadow: 0px 6px 15px rgba(255, 215, 0, 0.4) !important;
-        transition: 0.3s;
-    }
-    .stDownloadButton button:hover {
-        background-color: #FFEA00 !important;
-        transform: translateY(-2px);
-    }
-    
-    /* Input Box for API Key */
-    .stTextInput input {
-        border-radius: 20px !important;
-    }
+    .main { background-color: #0a192f; color: #e6f1ff; }
+    .stButton>button { background-color: #ffd700; color: #0a192f; font-weight: bold; border-radius: 8px; }
+    h1 { color: #ffd700; text-align: center; text-shadow: 2px 2px 4px #000; }
     </style>
-""", unsafe_allow_html=True)
+    """, unsafe_allow_html=True)
 
-# --- 2. Header ---
-st.markdown("<h1>🎬 ဗီဒီယိုမှ မြန်မာစာတန်းထိုး ပြောင်းလဲရန်</h1>", unsafe_allow_html=True)
+st.write("### 🎬 ဗီဒီယိုမှ မြန်မာစာတန်းထိုး ပြောင်းလဲရန်")
 
-# --- 3. API Key Setup ---
+# API Key Input
 api_key = st.text_input("သင်၏ Google AI Studio API Key ကို ထည့်ပါ", type="password")
 
-if api_key:
-    genai.configure(api_key=api_key)
+# File Upload
+uploaded_file = st.file_uploader("ဗီဒီယို သို့မဟုတ် အသံဖိုင် တင်ရန် (Upload)", type=['mp4', 'mkv', 'mov', 'mp3', 'wav'])
 
-    # --- 4. File Upload ---
-    uploaded_file = st.file_uploader("ဗီဒီယို သို့မဟုတ် အသံဖိုင် တင်ရန် (Upload Video/Audio)", type=['mp4', 'mp3', 'wav', 'mov'])
+if st.button("SRT ထုတ်ယူမည် (Generate SRT)"):
+    if not api_key:
+        st.error("ကျေးဇူးပြု၍ API Key အရင်ထည့်ပေးပါ")
+    elif not uploaded_file:
+        st.error("ကျေးဇူးပြု၍ ဖိုင်အရင်တင်ပေးပါ")
+    else:
+        try:
+            with st.spinner("အလုပ်လုပ်နေပါသည်... ခဏစောင့်ပေးပါ..."):
+                # Configure API
+                genai.configure(api_key=api_key.strip())
+                
+                # အကောင်းဆုံး Model ကို အလိုအလျောက် ရှာဖွေခြင်း
+                # Flash model ကို အရင်ရှာမည်၊ မတွေ့ပါက Pro ကို သုံးမည်
+                available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+                selected_model = "models/gemini-1.5-flash" if "models/gemini-1.5-flash" in available_models else available_models[0]
+                
+                model = genai.GenerativeModel(selected_model)
 
-    if uploaded_file is not None:
-        if st.button("SRT ထုတ်ယူမည် (Generate SRT)"):
-            with st.spinner("⏳ စာတန်းထိုး ပြုလုပ်နေပါသည်... ခဏစောင့်ပါ..."):
-                try:
-                    # Save uploaded file temporarily
-                    with tempfile.NamedTemporaryFile(delete=False, suffix=f".{uploaded_file.name.split('.')[-1]}") as temp_file:
-                        temp_file.write(uploaded_file.read())
-                        temp_file_path = temp_file.name
+                # Upload to Google AI
+                file_data = uploaded_file.read()
+                temp_file = genai.upload_file(uploaded_file.name)
+                
+                # File အဆင်သင့်ဖြစ်အောင် စောင့်ခြင်း
+                while temp_file.state.name == "PROCESSING":
+                    time.sleep(2)
+                    temp_file = genai.get_file(temp_file.name)
 
-                    # Upload to Gemini using File API
-                    video_file = genai.upload_file(path=temp_file_path)
+                # Prompt for SRT
+                prompt = """
+                Extract the speech from this file and generate a high-quality Burmese subtitle in SRT format. 
+                Ensure the timestamps are accurate and the Burmese translation is natural and professional.
+                Output ONLY the SRT content.
+                """
+                
+                response = model.generate_content([temp_file, prompt])
+                
+                # Result
+                srt_content = response.text
+                st.text_area("SRT Preview", srt_content, height=300)
+                
+                st.download_button(
+                    label="SRT ဖိုင်ကို ဒေါင်းလုဒ်ဆွဲမည်",
+                    data=srt_content,
+                    file_name=f"{uploaded_file.name}.srt",
+                    mime="text/plain"
+                )
+                st.success("အောင်မြင်စွာ လုပ်ဆောင်ပြီးစီးပါပြီ!")
 
-                    # Wait for Gemini to process the video
-                    while video_file.state.name == "PROCESSING":
-                        time.sleep(2)
-                        video_file = genai.get_file(video_file.name)
-
-                    if video_file.state.name == "FAILED":
-                        st.error("ဗီဒီယို ဖတ်ယူခြင်း မအောင်မြင်ပါ။")
-                    else:
-                        # Use Gemini 1.5 Flash for Speed
-                        model = model = genai.GenerativeModel('models/gemini-1.5-flash')
-                        
-                        # Professional Prompt for Myanmar SRT
-                        prompt = "You are a professional Video-to-Myanmar SRT generator. Listen to the speech, accurately transcribe it, and translate it into natural Myanmar (Burmese) language. Output ONLY in a professional SRT format with precise timestamps. No extra text or conversation."
-                        
-                        response = model.generate_content([video_file, prompt])
-                        srt_content = response.text
-
-                        st.success("✅ အောင်မြင်စွာ ပြုလုပ်ပြီးပါပြီ")
-
-                        # Preview Box (Code Editor Style)
-                        st.text_area("SRT Preview:", value=srt_content, height=300)
-
-                        # Vibrant Download Button
-                        st.download_button(
-                            label="📥 SRT ဒေါင်းလုဒ်ဆွဲမည်",
-                            data=srt_content,
-                            file_name="myanmar_subtitle.srt",
-                            mime="text/plain"
-                        )
-
-                    # Clean up
-                    os.remove(temp_file_path)
-
-                except Exception as e:
-                    st.error(f"အမှားအယွင်းဖြစ်ပေါ်နေပါသည်: {e}")
-else:
-    st.info("💡 စတင်ရန်အတွက် အထက်တွင် API Key ကို ဦးစွာထည့်သွင်းပါ။")
+        except Exception as e:
+            st.error(f"အမှားအယွင်း ဖြစ်ပေါ်နေပါသည်: {str(e)}")
