@@ -102,7 +102,7 @@ if api_key:
                         st.error("ဗီဒီယို ဖတ်ယူခြင်း မအောင်မြင်ပါ။")
                     else:
                         # Use Gemini 1.5 Flash for Speed
-                        model = genai.GenerativeModel(model_name="gemini-1.5-flash")
+                        model = model = genai.GenerativeModel('models/gemini-1.5-flash')
                         
                         # Professional Prompt for Myanmar SRT
                         prompt = "You are a professional Video-to-Myanmar SRT generator. Listen to the speech, accurately transcribe it, and translate it into natural Myanmar (Burmese) language. Output ONLY in a professional SRT format with precise timestamps. No extra text or conversation."
